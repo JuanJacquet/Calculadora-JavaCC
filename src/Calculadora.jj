@@ -1,0 +1,158 @@
+PARSER_BEGIN(Calculadora)
+
+// Paquete y librerías necesarias
+package tarea;
+import java.io.*;
+import java.util.*;
+
+public class Calculadora {
+
+    private static SymbolTable symbolTable = new SymbolTable();
+
+    public static void main(String[] args) {
+        Scanner entradaEscaner = new Scanner(System.in);
+
+        System.out.print("Ingrese una expresión: ");
+        String calculo = entradaEscaner.nextLine();
+
+        try {
+            Calculadora parser = new Calculadora(new StringReader(calculo));
+            
+            // Leer y mostrar los tokens
+            Token token;
+            while ((token = parser.getNextToken()).kind != CalculadoraConstants.EOF) {
+                System.out.println("Token: " + token.image);
+            }
+
+            // Reiniciar el lector para parsear de nuevo
+            parser.ReInit(new StringReader(calculo));
+
+            double result = parser.Statement();
+            if (Math.abs(result) < 1e-10) result = 0.0;
+            System.out.println("Resultado: " + result);
+        } catch (ParseException e) {
+            System.out.println("Error de sintaxis: " + e.getMessage());
+        } catch (ArithmeticException e) {
+            System.out.println("Error aritmético: " + e.getMessage());
+        } catch (RuntimeException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    public static double sin(double x) {
+        return Math.sin(Math.toRadians(x)); // Convertir grados a radianes para función sin
+    }
+
+    public static double cos(double x) {
+        return Math.cos(Math.toRadians(x)); // Convertir grados a radianes para función cos
+    }
+
+    public static double tan(double x) {
+        return Math.tan(Math.toRadians(x)); // Convertir grados a radianes para función tan
+    }
+}
+
+PARSER_END(Calculadora)
+
+// Ignorar espacios, tabuladores, saltos de línea y retorno de carro
+SKIP: { " " | "\t" | "\n" | "\r" }
+
+// Definición de tokens
+TOKEN: {
+    < PLUS: "+" > |
+    < MINUS: "-" > |
+    < MULT: "*" > |
+    < DIV: "/" > |
+    < LPAREN: "(" > |
+    < RPAREN: ")" > |
+    < ASSIGN: "=" > |  // Añadir token para asignación
+    < IDENTIFIER: (["a"-"z", "A"-"Z"])(["a"-"z", "A"-"Z", "0"-"9"])* > |  // Patrón para identificadores
+    < NUMBER: (["0"-"9"])+("."(["0"-"9"])+)? > |  // Patrón para números (enteros y decimales)
+    < SIN: "sin" > |
+    < COS: "cos" > |
+    < TAN: "tan" >
+}
+
+// Método para la declaración
+double Statement() :
+{
+    double result;
+}
+{
+    ( Identifier() <ASSIGN> result = Expression() {
+        symbolTable.put(token.image, result);
+    } )
+    | result = Expression()
+    { return result; }
+}
+
+// Método para identificadores
+void Identifier() :
+{
+    Token t;
+}
+{
+    t = <IDENTIFIER> { token = t; }
+    { return; } // Agrega este retorno para corregir el error
+}
+
+// Método para la expresión (principal)
+double Expression() :
+{
+    double result, term;
+    Token t;
+}
+{
+    result = Term()
+    (
+        ( t = <PLUS> | t = <MINUS> ) term = Term() {
+            if (t.kind == PLUS) result += term;
+            else result -= term;
+        }
+    )*
+    { return result; }
+}
+
+// Método para el término
+double Term() :
+{
+    double result, factor;
+    Token t;
+}
+{
+    result = Factor()
+    (
+        ( t = <MULT> | t = <DIV> ) factor = Factor() {
+            if (t.kind == MULT) result *= factor;
+            else {
+                if (factor == 0) {
+                    throw new ArithmeticException("Error: División por cero");
+                } else {
+                    result /= factor;
+                }
+            }
+        }
+    )*
+    { return result; }
+}
+
+// Método para el factor
+double Factor() :
+{
+    Token t;
+    double result;
+}
+{
+    t = <NUMBER> { return Double.parseDouble(t.image); }
+    | <LPAREN> result = Expression() <RPAREN> { return result; }
+    | <IDENTIFIER> { return symbolTable.get(t.image); }
+    | <SIN> <LPAREN> result = Expression() <RPAREN> { return Calculadora.sin(result); }
+    | <COS> <LPAREN> result = Expression() <RPAREN> { return Calculadora.cos(result); }
+    | <TAN> <LPAREN> result = Expression() <RPAREN> {
+        if (Math.abs(result - 90) < 1e-10) {
+            throw new ArithmeticException("Error: Tangente indefinida (ángulo cercano a 90 grados)");
+        } else {
+            return Calculadora.tan(result);
+        }
+    }
+}
